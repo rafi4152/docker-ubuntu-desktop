@@ -6,6 +6,7 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+# Updated: Removed snapd, systemd, init to optimize build
 RUN apt update && \
     apt install -y --no-install-recommends \
     xfce4 \
@@ -13,9 +14,6 @@ RUN apt update && \
     tigervnc-standalone-server \
     sudo \
     xterm \
-    init \
-    systemd \
-    snapd \
     vim \
     net-tools \
     curl \
@@ -30,7 +28,8 @@ RUN apt update && \
     python3 \
     python3-pip \
     software-properties-common \
-    openssl
+    openssl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN locale-gen en_US.UTF-8 && \
     update-locale LANG=en_US.UTF-8
@@ -43,7 +42,8 @@ RUN echo 'Package: *' > /etc/apt/preferences.d/mozilla-firefox && \
 
 RUN echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:noble";' > /etc/apt/apt.conf.d/51unattended-upgrades-firefox
 
-RUN apt update && apt install -y firefox xubuntu-icon-theme
+RUN apt update && apt install -y firefox xubuntu-icon-theme && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc
 RUN git clone https://github.com/novnc/websockify.git /opt/novnc/utils/websockify
@@ -55,12 +55,14 @@ RUN touch /root/.Xauthority
 EXPOSE 5901
 EXPOSE 6080
 
+# Fixed CMD: Added lock cleanups, printf for xstartup, and dbus-launch for XFCE
 CMD bash -c '\
 export LANG=en_US.UTF-8 && \
 export LANGUAGE=en_US:en && \
 export LC_ALL=en_US.UTF-8 && \
+rm -rf /tmp/.X*-lock /tmp/.X11-unix/X* || true && \
 mkdir -p ~/.vnc && \
-echo "#!/bin/sh\nstartxfce4" > ~/.vnc/xstartup && \
+printf "#!/bin/sh\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexport XKL_XMODMAP_DISABLE=1\nexec dbus-launch startxfce4 &\n" > ~/.vnc/xstartup && \
 chmod +x ~/.vnc/xstartup && \
 vncserver :1 -localhost no -SecurityTypes None -geometry 1366x768 --I-KNOW-THIS-IS-INSECURE && \
 openssl req -new -x509 -days 365 -nodes -subj "/CN=localhost" -out /tmp/self.pem -keyout /tmp/self.pem && \
