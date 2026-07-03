@@ -1,18 +1,19 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
-# ১. সিস্টেম ল্যাঙ্গুয়েজ সম্পূর্ণ ইংরেজি (English) ফিক্স করা
+# ১. ল্যাঙ্গুয়েজ ও এনভায়রনমেন্ট ফিক্স
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Dhaka
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
-# প্রয়োজনীয় প্যাকেজ ইনস্টল (এখানে apt থেকে novnc বাদ দেওয়া হয়েছে)
-RUN apt update && \
-    apt install -y --no-install-recommends \
+# প্রয়োজনীয় সব প্যাকেজ একবারে ইনস্টল
+RUN apt update -y && apt install --no-install-recommends -y \
     xfce4 \
     xfce4-goodies \
     tigervnc-standalone-server \
+    novnc \
+    websockify \
     sudo \
     xterm \
     vim \
@@ -26,46 +27,42 @@ RUN apt update && \
     x11-utils \
     x11-xserver-utils \
     x11-apps \
-    python3 \
-    python3-pip \
     software-properties-common \
     openssl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Locale জেনারেট করা যেন ভাষা চেঞ্জ না হয়
+# Locale জেনারেট করা (ইংলিশ লক করার জন্য)
 RUN locale-gen en_US.UTF-8 && \
     update-locale LANG=en_US.UTF-8
 
-# ফায়ারফক্স PPA সেটআপ (উবুন্টু ২৪-এর noble ভার্সন)
+# ফায়ারফক্স PPA সেটআপ (Ubuntu 24.04 Noble)
 RUN add-apt-repository ppa:mozillateam/ppa -y && \
     echo 'Package: *' > /etc/apt/preferences.d/mozilla-firefox && \
     echo 'Pin: release o=LP-PPA-mozillateam' >> /etc/apt/preferences.d/mozilla-firefox && \
     echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/mozilla-firefox && \
     echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:noble";' > /etc/apt/apt.conf.d/51unattended-upgrades-firefox
 
-RUN apt update && apt install -y firefox xubuntu-icon-theme && \
+RUN apt update -y && apt install -y firefox xubuntu-icon-theme && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ২. GitHub থেকে noVNC এবং Websockify-এর একদম লেটেস্ট ভার্সন ডাউনলোড
+# ২. GitHub থেকে noVNC এর লেটেস্ট ভার্সন ক্লোন (Modern UI ও মাউস ফিচারের জন্য)
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
-    git clone https://github.com/novnc/websockify.git /opt/novnc/utils/websockify && \
     ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+
+# ৩. বিল্ড স্টেজে xstartup ফাইল তৈরি (এতে রেলওয়েতে কোন স্ক্রিপ্ট এরর হবে না)
+RUN mkdir -p /root/.vnc && \
+    echo '#!/bin/sh' > /root/.vnc/xstartup && \
+    echo 'unset SESSION_MANAGER' >> /root/.vnc/xstartup && \
+    echo 'unset DBUS_SESSION_BUS_ADDRESS' >> /root/.vnc/xstartup && \
+    echo 'export LANG=en_US.UTF-8' >> /root/.vnc/xstartup && \
+    echo 'export LC_ALL=en_US.UTF-8' >> /root/.vnc/xstartup && \
+    echo 'exec dbus-launch startxfce4 &' >> /root/.vnc/xstartup && \
+    chmod +x /root/.vnc/xstartup
 
 RUN touch /root/.Xauthority
 
-# পোর্ট এক্সপোজ
 EXPOSE 5901
 EXPOSE 6080
 
-# ৩. ফাইনাল কমান্ড (লক ক্লিয়ারেন্স, ইংলিশ এনভায়রনমেন্ট এবং লেটেস্ট noVNC রান)
-CMD bash -c '\
-export LANG=en_US.UTF-8 && \
-export LANGUAGE=en_US:en && \
-export LC_ALL=en_US.UTF-8 && \
-rm -rf /tmp/.X*-lock /tmp/.X11-unix/X* || true && \
-mkdir -p ~/.vnc && \
-printf "#!/bin/sh\nexport LANG=en_US.UTF-8\nexport LC_ALL=en_US.UTF-8\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexec dbus-launch startxfce4 &\n" > ~/.vnc/xstartup && \
-chmod +x ~/.vnc/xstartup && \
-vncserver :1 -localhost no -SecurityTypes None -geometry 1366x768 --I-KNOW-THIS-IS-INSECURE && \
-openssl req -new -x509 -days 365 -nodes -subj "/CN=localhost" -out /tmp/self.pem -keyout /tmp/self.pem && \
-/opt/novnc/utils/websockify/run --web /opt/novnc --cert /tmp/self.pem 6080 localhost:5901'
+# ৪. ক্লিন ও সলিড এক লাইনের CMD (যা ক্র্যাশ প্রুফ)
+CMD ["bash", "-c", "rm -rf /tmp/.X*-lock /tmp/.X11-unix/X* || true && vncserver -localhost no -SecurityTypes None -geometry 1366x768 --I-KNOW-THIS-IS-INSECURE && openssl req -new -subj '/CN=localhost' -x509 -days 365 -nodes -out /tmp/self.pem -keyout /tmp/self.pem && websockify --web=/opt/novnc --cert=/tmp/self.pem 6080 localhost:5901"]
