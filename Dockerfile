@@ -1,69 +1,17 @@
 FROM --platform=linux/amd64 ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Asia/Dhaka
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
-
-# Updated: Removed snapd, systemd, init to optimize build
-RUN apt update && \
-    apt install -y --no-install-recommends \
-    xfce4 \
-    xfce4-goodies \
-    tigervnc-standalone-server \
-    sudo \
-    xterm \
-    vim \
-    net-tools \
-    curl \
-    wget \
-    git \
-    tzdata \
-    locales \
-    dbus-x11 \
-    x11-utils \
-    x11-xserver-utils \
-    x11-apps \
-    python3 \
-    python3-pip \
-    software-properties-common \
-    openssl && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN locale-gen en_US.UTF-8 && \
-    update-locale LANG=en_US.UTF-8
-
+RUN apt update -y && apt install --no-install-recommends -y xfce4 xfce4-goodies tigervnc-standalone-server novnc websockify sudo xterm init systemd snapd vim net-tools curl wget git tzdata
+RUN apt update -y && apt install -y dbus-x11 x11-utils x11-xserver-utils x11-apps
+RUN apt install software-properties-common -y
 RUN add-apt-repository ppa:mozillateam/ppa -y
-
-RUN echo 'Package: *' > /etc/apt/preferences.d/mozilla-firefox && \
-    echo 'Pin: release o=LP-PPA-mozillateam' >> /etc/apt/preferences.d/mozilla-firefox && \
-    echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/mozilla-firefox
-
-RUN echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:noble";' > /etc/apt/apt.conf.d/51unattended-upgrades-firefox
-
-RUN apt update && apt install -y firefox xubuntu-icon-theme && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN git clone https://github.com/novnc/noVNC.git /opt/novnc
-RUN git clone https://github.com/novnc/websockify.git /opt/novnc/utils/websockify
-
-RUN ln -s /opt/novnc/vnc.html /opt/novnc/index.html
-
+RUN echo 'Package: *' >> /etc/apt/preferences.d/mozilla-firefox
+RUN echo 'Pin: release o=LP-PPA-mozillateam' >> /etc/apt/preferences.d/mozilla-firefox
+RUN echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/mozilla-firefox
+RUN echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:noble";' | tee /etc/apt/apt.conf.d/51unattended-upgrades-firefox
+RUN apt update -y && apt install -y firefox
+RUN apt update -y && apt install -y xubuntu-icon-theme
 RUN touch /root/.Xauthority
-
 EXPOSE 5901
 EXPOSE 6080
-
-# Fixed CMD: Added lock cleanups, printf for xstartup, and dbus-launch for XFCE
-CMD bash -c '\
-export LANG=en_US.UTF-8 && \
-export LANGUAGE=en_US:en && \
-export LC_ALL=en_US.UTF-8 && \
-rm -rf /tmp/.X*-lock /tmp/.X11-unix/X* || true && \
-mkdir -p ~/.vnc && \
-printf "#!/bin/sh\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexport XKL_XMODMAP_DISABLE=1\nexec dbus-launch startxfce4 &\n" > ~/.vnc/xstartup && \
-chmod +x ~/.vnc/xstartup && \
-vncserver :1 -localhost no -SecurityTypes None -geometry 1366x768 --I-KNOW-THIS-IS-INSECURE && \
-openssl req -new -x509 -days 365 -nodes -subj "/CN=localhost" -out /tmp/self.pem -keyout /tmp/self.pem && \
-python3 /opt/novnc/utils/websockify/run --web /opt/novnc --cert /tmp/self.pem 6080 localhost:5901'
+CMD bash -c "vncserver -localhost no -SecurityTypes None -geometry 1024x768 --I-KNOW-THIS-IS-INSECURE && openssl req -new -subj \"/C=JP\" -x509 -days 365 -nodes -out self.pem -keyout self.pem && websockify -D --web=/usr/share/novnc/ --cert=self.pem 6080 localhost:5901 && tail -f /dev/null"
